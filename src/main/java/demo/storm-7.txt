@@ -1,0 +1,239 @@
+1、怎么在storm上面做统计个数之类的事情？
+2、如何实现Transactional Topologies？
+3、与每次只处理一个tuple的简单方案相比， 一个更好的方案是什么？
+
+Transactional topology是一个0.9版本中被弃用的原语，取而代之的是trident框架。
+Storm通过保证每个tuple至少被处理一次来提供可靠的数据处理。
+关于这一点最常被问到的问题就是“既然tuple可能会被再次发送(replay), 那么我们怎么在storm上面做统计个数之类的事情呢？
+storm有可能会重复计数(overcount)吧？”
+
+Storm 0.7.0引入了Transactional Topology,
+	它可以保证每个tuple”被且仅被处理一次”(exactly once), 这样你就可以实现一种非常准确、易于扩展、并且高度容错方式来实现计数类应用。
+	跟Distributed RPC类似，transactional topology其实不能算是storm的一个特性，
+	它其实是用storm的底层原语spout, bolt, topology, stream等等抽象出来的一个特性。
+一些概念
+	本节内容我们将一步步地建立transactional topology的抽象。
+	首先我们提出一种最简单的抽象方式， 然后一步步的完善改进，最后介绍storm代码里面所使用的抽象方式。
+	第一个设计：一次只处理一个tuple
+
+事务性topology背后的核心思想是要在处理数据时提供强顺序性。这种强顺序性最简单的表现、同时也是我们将要学习的第一个设计就是：我们每次只处理一个tuple， 除非这个tuple处理成功，否则我们不去处理下一个tuple。
+每一个tuple都跟一个transaction id相关联。如果一个tuple处理失败了，然后需要重新发送，那么该tuple会使用完全相同的transaction id被发送。这里说的trasaction id其实就是一个数字， 来 1个tuple，它就递增1。所以第一个tuple的transaction id是1， 第二个tuple的transaction id是2，等等。
+tuple的强顺序性使得我们即使在tuple重发的时候也能够实现“一次而且只有一次”的语义。 让我们看个例子：
+
+比如你想统计一个stream里面tuple的总数。那么为了保证统计数字的准确性，你在数据库里面不但要保存tuple的个数， 还要保存这个数字所对应的最新的transaction id。 当你的代码中要更新数据库里tuple个数的时候，只有当新的transaction id跟数据库里面保存的transaction id不一样的时候才去更新。考虑两种情况：
+1、数据库里面的transaction id跟当前的transaction id不一样： 由于transaction的强顺序性，我们可以确定当前的tuple肯定没有统计在数据库里面。所以我们可以安全地递增这个数字，并且更新这个transaction id。
+2、数据库里面的transaction id跟当前的transaction id一样： 那么我们知道当前tuple已经统计在数据库里面了，那么可以忽略这个更新。这个tuple肯定之前在更新了数据库之后，反馈给storm的时候失败了（ack超时之类的）。
+
+上面这个逻辑以及事务的强顺序性保证数据库里面tuple的个数(count)即使在tuple被重发的时候也是准确的。这个主意（保存count + transaction-id)是Kafka的开发者在这个设计文档里面（http://incubator.apache.org/kafka/07/design.html）提出来的。
+更进一步来说，这个topology可以在一个事务里面更新很多不同的状态，并且可以到达“一次而且只有一次”的逻辑。如果有任何失败（failure），那么已经成功的更新你再去更新它会忽略，失败的更新你去再次更新它则会接受。比如，如果你在处理一个推文(tweet)流，你可以更新每个url下的推文(tweet)数， 同时更新每个domain下的推文(tweet)数。
+这个“每次只处理一个tuple”的设计有一个很大的问题， 那就是你必须要等待一个tuple完全处理成功之后才能去处理下一个tuple，此时效率是非常低下的。这种设计需要大量的数据库调用（对每个tuple至少一次)，而且这个设计也没有利用到storm的并行计算能力， 所以它的可扩展能力是非常差的。
+
+第二个设计：一次处理一批tuple
+
+与每次只处理一个tuple的简单方案相比， 一个更好的方案是每个transaction里面处理一批tuple。所以如果你在做一个计数应用， 那么你每次更新到总数里面的是整个batch里面的tuple数量。如果这个batch失败了，那么你重新发送这整个batch。相应地， 我们不是给每个tuple一个transaction id而是给整个batch分配一个transaction id，batch与batch之间的处理是强顺序性的， 而batch内部是可以并行的。下面这个是设计图：
+Transasctional Sport-->Batch(txid=1),Batch(txid=2),Batch(txid=3)-->Bolt-->..
+所以如果你每个batch处理1000个tuple的话， 那么你的应用将会比第一种设计少1000倍的数据库调用。此外，它利用了storm的并行计算能力（每个batch内部可以并行)。
+虽然这个设计比第一个设计好多了， 它仍然不是一个完美的方案。topology里面的worker会花费大量的时间等待计算的其它部分完成，比如看下面的这个计算。
+Transasctional Spot-->Bolt1-->Bolt2-->Bolt3-->Bolt4
+
+在bolt 1完成它的处理部分之后， 它需要等待剩下的bolt去处理当前batch， 直到发射下一个batch
+
+第三个设计：Storm采用的设计
+一个我们需要意识到的比较重要的问题是，在处理一批tuples的时候，不是所有的工作都需要强顺序性的。比如，当做一个全局计数应用的时候， 整个计算可以分为两个部分。
+	1、计算一个batch的数量（称 局部数量）。
+	2、把这个batch对应的局部数量更新到数据库里面去。
+其中第二步在多个batch之间需要保证强的顺序性， 但是第一步并不需要， 所以我们可以把第一步并行化。所以当batch 1在更新它的个数进入数据库的时候，batch 2~10可以开始计算它们的局部数量了。
+Storm通过把一个batch的计算分成两个阶段来实现上面所说的原理：
+
+	1、processing阶段： 这个阶段很多batch可以并行计算。
+	2、commit阶段： 这个阶段各个batch之间需要有强顺序性的保证。所以第二个batch必须要在第一个batch成功提交之后才能提交。
+这两个阶段合起来称为一个transaction。在一个给定的时刻，可以有很多batch处于processing阶段，但是只有一个batch可以处在commit阶段。如果一个batch在processing或者commit阶段有任何错误， 那么整个transaction需要被重新进行。
+
+设计细节
+当使用Transactional Topologies的时候， storm为你做下面这些事情：
+
+	1) 管理状态：Storm把所有实现Transactional Topologies所必须的状态保存在zookeeper里面，这包括当前的transaction id以及定义每个batch的一些元数据。
+	2) 协调事务：Storm帮你管理所有事情，以便决定在某个个时间点，哪些事务处于proccessing阶段，那个事务正在committing。
+	3) 错误检测：Storm利用acking框架来高效地检测什么时候一个batch被成功处理了，被成功提交了，或者失败了。Storm然后会相应地replay对应的batch。你不需要自己手动做任何acking或者anchoring — storm帮你搞定所有事情。
+	4) 内置的批处理API：Storm在普通bolt之上包装了一层API来提供对tuple的批处理支持。Storm管理所有的协调工作，包括决定什么时候一个bolt接收到一个特定transaction的所有tuple。Storm同时也会自动清理每个transaction所产生的中间数据。
+	最后，需要注意的一点是Transactional Topologies需要一个可以完全重发(replay)一个特定batch的消息的队列系统(Message Queue)。Kestrel之类的技术做不到这一点，而Apache的Kafka对于这个需求来说是正合适的，同时storm-contrib里面的storm-kafka为Kafka实现了一个事务性的spout。
+	
+一个基本的例子
+你可以通过使用TransactionalTopologyBuilder来创建transactional topology. 下面就是一个transactional topology的定义， 它的作用是计算输入流里面的tuple的个数。这段代码来自storm-starter里面的TransactionalGlobalCount。
+MemoryTransactionalSpout spout = new MemoryTransactionalSpout(DATA, new Fields("word"), PARTITION_TAKE_PER_BATCH);
+TransactionalTopologyBuilder builder = new TransactionalTopologyBuilder("global-count", "spout", spout, 3);
+builder.setBolt("partial-count", new BatchCount(), 5)
+        .shuffleGrouping("spout");
+builder.setBolt("sum", new UpdateGlobalCount())
+        .globalGrouping("partial-count");
+
+TransactionalTopologyBuilder构造器中接受如下的参数：
+
+一个transaction topology的id
+spout在整个topology里面的id。
+一个transactional spout。
+一个可选的这个transactional spout的并行度。
+topology的id是用来在zookeeper里面保存这个topology的当前进度状态的，所以如果你重启这个topology， 它可以接着前面的进度继续执行。
+
+一个transaction topology里面有一个唯一的TransactionalSpout, 这个spout是通过TransactionalTopologyBuilder的构造函数来指定的。在这个例子里面，MemoryTransactionalSpout被用来从一个内存变量里面读取数据(DATA)。第二个参数指定spout发送的tuple的字段， 第三个参数指定每个batch的最大tuple数量。关于如何自定义TransactionalSpout我们会在后面介绍。
+
+现在说说 bolts。这个topology并行地计算tuple的总数量。第一个bolt：BatchBolt，随机地把输入tuple分给各个task，然后各个task各自统计局部数量。第二个bolt：UpdateGlobalCount, 用全局grouping来汇总这个batch中tuple的数量，然后再更新到数据库里面的全局数量。
+下面是BatchCount的定义：
+public static class BatchCount extends BaseBatchBolt {
+    Object _id;
+    BatchOutputCollector _collector;
+    int _count = 0;
+ 
+    @Override
+    public void prepare(Map conf, TopologyContext context, BatchOutputCollector collector, Object id) {
+        _collector = collector;
+        _id = id;
+    }
+ 
+    @Override
+    public void execute(Tuple tuple) {
+        _count++;
+    }
+ 
+    @Override
+    public void finishBatch() {
+        _collector.emit(new Values(_id, _count));
+    }
+ 
+    @Override
+    public void declareOutputFields(OutputFieldsDeclarer declarer) {
+        declarer.declare(new Fields("id", "count"));
+    }
+}
+storm会为每个正在处理的batch创建一个BatchCount对象，这个BatchCount是运行在BatchBoltExecutor里面的。而BatchBoltExecutor负责创建以及清理这个对象的实例。
+
+BatchCount对象的prepare方法接收如下参数:
+
+Storm config
+Topology context
+Output collector
+这个batch的id (txid)，在Transactional Topology中， 这个id则是一个TransactionAttempt对象。
+这个batch bolt的抽象在DRPC里面也可以用， 只是txid的类型不一样而已。实际上，BatchBolt可以接收一个txid类型的参数，所以如果你只是想在transactioinal topology里面使用这个BatchBolt，你可以去继承BaseTransactionalBolt类，如下定义：
+public abstract class BaseTransactionalBolt extends BaseBatchBolt {
+}
+在transaction topology里面发射的所有的tuple都必须以TransactionAttempt作为第一个field， 然后storm可以根据这个field来判断哪些tuple属于一个batch。所以你在发射tuple的时候需要满足这个条件。
+
+TransactionAttempt包含两个值： 一个transaction id，一个attempt id。transaction id的作用就是我们上面介绍的对于每个batch是唯一的，而且不管这个batch 被replay多少次都是一样的。attempt id是对于每个batch唯一的一个id， 但是对于同一个batch，它replay之后的attempt id跟replay之前就不一样了， 我们可以把attempt id理解成replay-times, storm利用这个id来区别一个batch发射的tuple的不同版本。
+
+transaction id对于每个batch加一， 所以第一个batch的transaction id是”1″, 第二个batch是”2″，依次类推。
+
+每收到一个batch中的tuple，execute方法便被调用一次。每次当该方法被调用时，你应该把这个batch里面的状态保持在一个本地变量里面。对于这个例子来说， 它在execute方法里面递增tuple的个数。
+
+最后， 当这个bolt接收到某个batch的所有的tuple之后， finishBatch方法会被调用。这个例子里面的BatchCount类会在这个时候发射它的局部数量到它的输出流里面去。
+
+下面是UpdateGlobalCount类的定义：
+public static class UpdateGlobalCount extends BaseTransactionalBolt implements ICommitter {
+    TransactionAttempt _attempt;
+    BatchOutputCollector _collector;
+    int _sum = 0;
+ 
+    @Override
+    public void prepare(Map conf, TopologyContext context, BatchOutputCollector collector, TransactionAttempt attempt) {
+        _collector = collector;
+        _attempt = attempt;
+    }
+ 
+    @Override
+    public void execute(Tuple tuple) {
+        _sum+=tuple.getInteger(1);
+    }
+ 
+    @Override
+    public void finishBatch() {
+        Value val = DATABASE.get(GLOBAL_COUNT_KEY);
+        Value newval;
+        if(val == null || !val.txid.equals(_attempt.getTransactionId())) {
+            newval = new Value();
+            newval.txid = _attempt.getTransactionId();
+            if(val==null) {
+                newval.count = _sum;
+            } else {
+                newval.count = _sum + val.count;
+            }
+            DATABASE.put(GLOBAL_COUNT_KEY, newval);
+        } else {
+            newval = val;
+        }
+        _collector.emit(new Values(_attempt, newval.count));
+    }
+ 
+    @Override
+    public void declareOutputFields(OutputFieldsDeclarer declarer) {
+        declarer.declare(new Fields("id", "sum"));
+    }
+}
+UpdateGlobalCount是Transactional Topologies相关的类，所以它继承自BaseTransactionalBolt。在execute方法里面， UpdateGlobalCount累积这个batch的计数， 比较有趣的是finishBatch方法。
+
+首先， 注意这个bolt实现了ICommitter接口，这告诉storm要在这个事务的commit阶段调用finishBatch方法，所以对于finishBatch的调用会保证强顺序性（顺序就是transaction id的升序)，另一方面execute方法在processing或者commit阶段都可以执行。另外一种把bolt标识为commiter的方法是调用TransactionalTopologyBuilder的setCommiterBolt来添加Bolt（而不是setBolt）。
+
+UpdateGlobalCount里面finishBatch方法的逻辑是首先从数据库中获取当前的值，并且把数据库里面的transaction id与当前这个batch的transaction id进行比较。如果他们一样， 那么忽略这个batch。否则把这个batch的结果加到总结果里面去，并且更新数据库。
+
+关于transactional topology的更深入的例子可以看看storm-starter里面的TransactionalWords类， 这个例子会在一个事务里面更新多个数据库。
+
+
+
+Transactional Topology API
+这一节介绍Transaction topology API中的几个部分。
+
+Bolts
+在一个transactional topology里面可以有三种类型的bolt：
+1、BasicBolt：这个bolt不跟batch的tuples打交道，它只基于单个tuple的输入来发送新的tuple。
+2、BatchBolt：这个bolt处理batch中的tuples，对于每一个tuple调用execute方法，而在整个batch处理完成的时候调用finishBatch方法。
+3、被标记成Committer的BatchBolt：和普通的BatchBolt的唯一的区别是finishBatch这个方法被调用的时机：一个committer bolt的finishBatch方法在commit阶段调用。一个batch的commit阶段由storm保证只在前一个batch成功提交之后才会执行。有两个方法可以让一个普通BatchBolt变成committer：1) 实现ICommitter接口 2) 通过TransactionalTopologyBuilder的setCommitterBolt方法把BatchBolt添加到topology里面去。
+
+
+processing阶段 vs. commit阶段
+为了搞清楚在一个事务中processing阶段与commit阶段的区别， 让我们看下面的topology：
+
+Transasctional Spout-->Bolt A-->Bolt B-->Bolt C -->Bolt D
+Bolt A-->Bolt C
+在这个topology里面有红色轮廓的bolt(Bolt B,Bolt D)才是committers。
+
+在processing阶段， bolt A会处理从spout发射出来的整个batch，调用finishBatch方法并且发送tuple给bolt B和bolt C。Bolt B是一个committer， 所以它会处理所有的tuple， 但是不会调用finishBatch方法。Bolt C同样也不会调用finishBatch方法， 因为它不知道它有没有从Bolt B接收到所有的tuple（因为Bolt B还在等着事务提交）。最后Bolt D会接收到Bolt C在调用execute方法的时候发送的所有的tuple。
+
+在bolt B上，当batch提交的时候，finishBatch被调用。完成之后，Bolt C现在可以检测到它接收到了所有的tuple， 所以可以调用finishBatch了。最后，Bolt D将收到所有的batch并调用finishBatch了。
+
+要注意的是，虽然Bolt D是一个committer，它在接收到整个batch的tuple之后不需要等待第二个commit信号。因为它是在commit阶段接收到的整个batch，它会调用finishBatch来完成整个事务。
+
+committer bolt和普通的batch bolt一样都在commit阶段进行发送确认（ack），唯一的区别在于committer bolt在processing阶段不会调用finishBatch。
+
+
+Acking
+注意，当使用transactional topology的时候你不需要显式地去做任何的acking或者anchoring，storm在背后都做掉了。（storm对transactional topolgies里面的acking机制进行了高度的优化)
+
+Failing a transaction
+在使用普通bolt的时候， 你可以通过调用OutputCollector的fail方法来fail这个tuple所在的tuple树。Transactional Topology对用户隐藏了acking框架， 它提供一个不同的机制来fail一个batch（从而使得这个batch被replay）：只要抛出一个FailedException就可以了。跟普通的异常不一样， 这个异常只会导致当前的batch被replay, 而不会使整个进程崩溃掉。
+
+Transactional spout
+TransactionalSpout接口跟普通的Spout接口完全不一样。一个TransactionalSpout的实现会发送一批一批（batch）的tuple， 而且必须保证同一批次tuples的transaction id始终一样。
+
+在transactional topology运行的时候， transactional spout看起来是这样的一个结构：
+
+Coordinator-->Emitter task1,2,3..
+在图的左边的coordinator是一个普通的storm的spout——它一直为事务的batch发射tuple。Emitter则像一个普通的storm bolt，它负责为每个batch实际发射tuple，emitter以all grouping的方式订阅coordinator的”batch emit”流。
+
+由于TransactionalSpout发射的tuple可能需要会被replay， 因此需要具有幂等性（否则多次replay同一个tuple会使得最后的结果不对）， 为了实现幂等性，需要保存Transactional Spout的少量的状态，这个状态是保存在ZooKeeper里面的。
+
+关于如何实现一个TransactionalSpout的细节可以参见Javadoc。
+
+
+Partitioned Transactional Spout
+一种常见的TransactionalSpout是那种从多个queue broker读取数据然后再发射的tuple。比如TransactionalKafkaSpout就是这样工作的。IPartitionedTransactionalSpout把这些管理每个分区的状态以保证可以replay的幂等性的工作都自动化掉了。更多可以参考Javadoc。
+配置
+
+Transactional Topologies有两个重要的配置：
+Zookeeper：默认情况下，transactional topology会把状态信息保存在一个zookeeper里面（协调集群的那个)。你可以通过这两个配置来指定其它的zookeeper：”transactional.zookeeper.servers” 和 “transactional.zookeeper.port“。
+
+同时活跃的batch数量：你必须设置同时处理的batch数量，你可以通过”topology.max.spout.pending” 来指定， 如果你不指定，默认是1。
+
+实现
+Transactional Topologies的实现是非常优雅的。管理提交协议，检测失败并且串行提交看起来很复杂，但是使用storm的原语来进行抽象是非常简单的。
+1、transactional spout是一个子topology, 它由一个coordinator spout和一个emitter bolt组成。
+2、coordinator是一个普通的spout，并行度为1；emitter是一个bolt，并行度为P，使用all分组方式连接到coordinator的“batch”流上。
+3、coordinator使用一个acking框架决定什么时候一个batch被成功执行（process）完成，然后去决定一个batch什么时候被成功提交（commit）。
+

@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Maven: storm:carbonite:1.0.1">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/storm/carbonite/1.0.1/carbonite-1.0.1.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/storm/carbonite/1.0.1/carbonite-1.0.1-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/storm/carbonite/1.0.1/carbonite-1.0.1-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
