@@ -1,3 +1,0 @@
-http://ifeve.com/storm-internal-implementation/
-
-http://ifeve.com/apache-storm/
