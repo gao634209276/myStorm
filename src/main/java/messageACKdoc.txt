@@ -233,3 +233,5 @@ Storm 是以怎样一种高效的方式实现可靠性的？
 			那么需要在 execute 方法之初调用OutputCollector.ack 来立即响应上游的消息，
 			否则上游组件会误认为消息没有发送成功导致所有的消息会被反复发送——译者注）。
 
+其他参考:
+	http://shiyanjun.cn/archives/1472.html
