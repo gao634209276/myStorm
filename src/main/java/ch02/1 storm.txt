@@ -78,9 +78,13 @@ Spout
 	spout WordReader类实现了IRichSpout接口。
 	我们将在第四章看到更多细节。WordReader负责从文件按行读取文本，并把文本行提供给第一个bolt。
 
-	第一个被调用的spout方法都是public void open(Map conf, TopologyContext context, SpoutOutputCollector collector)。
-	它接收如下参数：配置对象，在定义topology对象是创建；TopologyContext对象，包含所有拓扑数据；
-	还有SpoutOutputCollector对象，它能让我们发布交给bolts处理的数据。下面的代码主是这个方法的实现。
+	第一个被调用的spout方法都是open()
+	public void open(Map conf, TopologyContext context, SpoutOutputCollector collector)。
+	它接收如下参数：
+		配置对象，在定义topology对象是创建；
+		TopologyContext对象，包含所有拓扑数据；
+		还有SpoutOutputCollector对象，它能让我们发布交给bolts处理的数据。
+	下面的代码主是这个方法的实现。
 
 	我们在这个方法里创建了一个FileReader对象，用来读取文件。
 	接下来我们要实现public void nextTuple()，我们要通过它向bolts发布待处理的数据。
