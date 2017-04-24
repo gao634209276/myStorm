@@ -43,7 +43,7 @@ public class WordCountTopology {
 			try {
 				Thread.sleep(10000);
 			} catch (InterruptedException e) {
-			}finally{
+			} finally {
 				cluster.killTopology(TOPOLOGY_NAME);
 				cluster.shutdown();
 			}

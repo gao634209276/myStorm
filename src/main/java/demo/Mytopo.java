@@ -16,7 +16,6 @@ public class Mytopo {
 		Config conf = new Config();
 		TopologyBuilder builder = new TopologyBuilder();
 
-
 		if (args != null && args.length > 0) {
 			conf.setNumWorkers(3);
 			StormSubmitter.submitTopology("wc", conf, builder.createTopology());

@@ -5,7 +5,9 @@ import org.apache.storm.LocalCluster;
 import org.apache.storm.topology.TopologyBuilder;
 import org.apache.storm.tuple.Fields;
 
-
+/**
+ * arg: FilePath
+ */
 public class TopologyMain {
 	public static void main(String[] args) throws InterruptedException {
 

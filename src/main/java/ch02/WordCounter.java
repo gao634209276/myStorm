@@ -60,6 +60,5 @@ public class WordCounter extends BaseRichBolt {
 
 	@Override
 	public void declareOutputFields(OutputFieldsDeclarer declarer) {
-
 	}
 }
