@@ -15,7 +15,6 @@
 		<storm.version>0.9.5</storm.version>
 		<kafka.version>0.8.2.1</kafka.version>
 		<curator.version>2.5.0</curator.version>
-		<basedir>sms_monitor</basedir>
 	</properties>
 
 	<dependencies>
@@ -23,19 +22,19 @@
 			<groupId>org.apache.storm</groupId>
 			<artifactId>storm-core</artifactId>
 			<version>${storm.version}</version>
-			<scope>provided</scope>
+			<!--<scope>provided</scope>-->
 		</dependency>
 		<dependency>
 			<groupId>org.apache.storm</groupId>
 			<artifactId>storm-hdfs</artifactId>
 			<version>0.9.5</version>
-			<scope>provided</scope>
+			<!--<scope>provided</scope>-->
 		</dependency>
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-client</artifactId>
 			<version>2.2.0</version>
-			<scope>provided</scope>
+			<!--<scope>provided</scope>-->
 			<exclusions>
 				<exclusion>
 					<groupId>org.slf4j</groupId>
@@ -43,18 +42,12 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-		<dependency>
-			<groupId>org.apache.storm</groupId>
-			<artifactId>storm-hbase</artifactId>
-			<version>0.9.5</version>
-			<scope>provided</scope>
-		</dependency>
 
 		<dependency>
 			<groupId>org.apache.kafka</groupId>
 			<artifactId>kafka_2.11</artifactId>
 			<version>${kafka.version}</version>
-			<scope>provided</scope>
+			<!--<scope>provided</scope>-->
 			<!-- use provided scope, so users can pull in whichever scala version they
 				choose -->
 			<exclusions>
@@ -73,7 +66,7 @@
 			<groupId>org.apache.storm</groupId>
 			<artifactId>storm-kafka</artifactId>
 			<version>0.9.5</version>
-			<scope>provided</scope>
+			<!--<scope>provided</scope>-->
 		</dependency>
 	</dependencies>
 

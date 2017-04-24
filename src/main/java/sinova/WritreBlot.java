@@ -21,6 +21,7 @@ import java.util.Map;
 
 /**
  * Write File
+ * 每分钟同步短厅明细至省份FTP
  * Created by noah on 17-4-21.
  */
 public class WritreBlot extends BaseRichBolt {
@@ -69,10 +70,9 @@ public class WritreBlot extends BaseRichBolt {
 
 	@Override
 	public Map<String, Object> getComponentConfiguration() {
-		Map<String, Object> conf = new HashMap<String, Object>();
+		//Map<String, Object> conf = new HashMap<String, Object>();
+		Config conf = new Config();
 		conf.put(Config.TOPOLOGY_TICK_TUPLE_FREQ_SECS, 60);
-
-
 		return conf;
 	}
 

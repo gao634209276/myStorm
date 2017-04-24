@@ -17,35 +17,34 @@ import java.util.Arrays;
  * Created by noah on 17-4-21.
  */
 public class LoadDataTopology {
-	public static final String KAFKA_SPOUT_ID = "kafka_smsbusTopic";
-	public static final String TOPOLOGY_NAME = "shortHallServiceTopology";
-	private static final String KAFKA_TOPIC = "smsbusTopic";
-	private static final String KAFKA_ID = "smsbusTopicId";
+	public static final String KAFKA_SPOUT_ID = "kafkaSpout";
+	public static final String TOPOLOGY_NAME = "TestTopology";
+	private static final String KAFKA_TOPIC = "thirdservice";
+	private static final String KAFKA_ID = "kafkaId";
 
 	public static void main(String[] args) {
 		Config config = new Config();
 		// 读取配置文件
 		PropertiesUtil util = new PropertiesUtil("/conf.properties");
+		config.put("sms_log_path", util.getProperty("sms_log_path"));// local file
+		//kafka spout
 		BrokerHosts brokerHosts = new ZkHosts(util.getProperty("zks"));
 		SpoutConfig spoutConf = new SpoutConfig(brokerHosts, KAFKA_TOPIC, util.getProperty("zkRoot"), KAFKA_ID);
 		spoutConf.scheme = new SchemeAsMultiScheme(new StringScheme());
 		spoutConf.forceFromStart = false;
 		spoutConf.startOffsetTime = 0;
+		// storm zk conf
 		String zkServers = util.getProperty("zkServers");
-		config.put("sms_log_path", util.getProperty("sms_log_path"));
-		String zkSers[] = new String[3];
-		for (int i = 0; i < 3; i++) {
-			zkSers[i] = zkServers.split(",")[i];
-		}
-		spoutConf.zkServers = Arrays.asList(zkSers);
+		spoutConf.zkServers = Arrays.asList(zkServers.split(","));
 		spoutConf.zkPort = Integer.valueOf(util.getProperty("zkPort"));
 		KafkaSpout spout = new KafkaSpout(spoutConf);
 		// 创建topology
 		TopologyBuilder builder = new TopologyBuilder();
 
 		builder.setSpout(KAFKA_SPOUT_ID, spout, 5);
-		//builder.setBolt("shortHallServiceBolt", new ShortHallServiceBolt(),5).shuffleGrouping(KAFKA_SPOUT_ID);
-		//builder.setBolt("shortHallServiceWriteFileBolt",new ShortHallServiceWriteFileBolt(),1).shuffleGrouping("shortHallServiceBolt");
+		//builder.setBolt("shortHallServiceWriteFileBolt",new WritreBlot(),1).shuffleGrouping("KAFKA_SPOUT_ID");
+		builder.setBolt("LogBlot", new LogBlot(), 1).shuffleGrouping("KAFKA_SPOUT_ID");
+
 		if (args.length == 0) {
 			config.setNumWorkers(1);
 			LocalCluster cluster = new LocalCluster();
