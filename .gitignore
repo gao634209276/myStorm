@@ -2,3 +2,5 @@
 .gitignore
 .idea
 /target
+.classpath
+.project
