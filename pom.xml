@@ -10,30 +10,41 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<hbase.version>0.98.1-hadoop2</hbase.version>
-		<hdfs.version>2.2.0</hdfs.version>
 		<storm.version>0.9.5</storm.version>
 		<kafka.version>0.8.2.1</kafka.version>
-		<curator.version>2.5.0</curator.version>
 	</properties>
 
 	<dependencies>
 		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.12</version>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
 			<groupId>org.apache.storm</groupId>
 			<artifactId>storm-core</artifactId>
+			<version>${storm.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.storm</groupId>
+			<artifactId>storm-hdfs</artifactId>
 			<version>${storm.version}</version>
 			<!--<scope>provided</scope>-->
 		</dependency>
 		<dependency>
 			<groupId>org.apache.storm</groupId>
-			<artifactId>storm-hdfs</artifactId>
+			<artifactId>storm-kafka</artifactId>
 			<version>0.9.5</version>
 			<!--<scope>provided</scope>-->
 		</dependency>
+
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-client</artifactId>
-			<version>2.2.0</version>
+			<version>2.5.2</version>
 			<!--<scope>provided</scope>-->
 			<exclusions>
 				<exclusion>
@@ -42,14 +53,11 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-
 		<dependency>
 			<groupId>org.apache.kafka</groupId>
 			<artifactId>kafka_2.11</artifactId>
 			<version>${kafka.version}</version>
 			<!--<scope>provided</scope>-->
-			<!-- use provided scope, so users can pull in whichever scala version they
-				choose -->
 			<exclusions>
 				<exclusion>
 					<groupId>org.apache.zookeeper</groupId>
@@ -61,15 +69,7 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-
-		<dependency>
-			<groupId>org.apache.storm</groupId>
-			<artifactId>storm-kafka</artifactId>
-			<version>0.9.5</version>
-			<!--<scope>provided</scope>-->
-		</dependency>
 	</dependencies>
-
 
 	<build>
 		<plugins>
@@ -83,7 +83,105 @@
 					<encoding>UTF-8</encoding>
 				</configuration>
 			</plugin>
+			<!--mvn assembly:assembly-->
+			<!--<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>make-assembly</id>
+						<phase>package</phase>
+						<goals>
+							<goal>assembly</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<descriptorRefs>
+						<descriptorRef>jar-with-dependencies</descriptorRef>
+					</descriptorRefs>
+					<archive>
+						<manifest>
+							<mainClass>sinova.LoadDataTopology</mainClass>
+						</manifest>
+					</archive>
+					<outputDirectory>${project.build.directory}/assembly</outputDirectory>
+				</configuration>
+			</plugin>-->
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>2.4</version>
+				<executions>
+					<execution>
+						<id>jar</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<archive>
+						<manifest>
+							<addClasspath>true</addClasspath>
+							<classpathPrefix>lib/</classpathPrefix>
+							<mainClass>sinova.LoadDataTopology</mainClass>
+						</manifest>
+						<manifestEntries>
+							<Class-Path>conf/</Class-Path>
+						</manifestEntries>
+					</archive>
+				</configuration>
+			</plugin>
+			<!--<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<configuration>
+					<outputDirectory>${project.build.directory}/lib</outputDirectory>
+					<excludeTransitive>false</excludeTransitive>
+					<stripVersion>false</stripVersion>
+				</configuration>
+				<executions>
+					<execution>
+						<id>copy-dependencies</id>
+						<phase>package</phase>
+						<goals>
+							<goal>copy-dependencies</goal>
+						</goals>
+						<configuration>
+							&lt;!&ndash; 拷贝项目依赖包到lib/目录下 &ndash;&gt;
+							<outputDirectory>${project.build.directory}/lib</outputDirectory>
+							<excludeTransitive>false</excludeTransitive>
+							<stripVersion>false</stripVersion>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+				<version>2.6</version>
+				<executions>
+					<execution>
+						<id>copy-resources</id>
+						<phase>package</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<encoding>UTF-8</encoding>
+							<outputDirectory>${project.build.directory}/conf</outputDirectory>
+							<resources>
+								<resource>
+									<directory>src/main/resources</directory>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>-->
+
+			<!--<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
 				<version>3.0.0</version>
@@ -105,10 +203,11 @@
 									<mainClass></mainClass>
 								</transformer>
 							</transformers>
+							<outputDirectory>${project.build.directory}/shade</outputDirectory>
 						</configuration>
 					</execution>
 				</executions>
-			</plugin>
+			</plugin>-->
 		</plugins>
 	</build>
 </project>

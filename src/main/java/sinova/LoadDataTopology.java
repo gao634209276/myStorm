@@ -13,62 +13,61 @@ import storm.kafka.*;
 import java.util.Arrays;
 
 /**
+ * sinova.LoadDataTopology
  * kafkaSport-->blot-->file
  * Created by noah on 17-4-21.
  */
 public class LoadDataTopology {
 	public static final String KAFKA_SPOUT_ID = "kafkaSpout";
 	public static final String TOPOLOGY_NAME = "TestTopology";
-	private static final String KAFKA_TOPIC = "thirdservice";
-	private static final String KAFKA_ID = "kafkaId";
 
 	public static void main(String[] args) {
 		Config config = new Config();
 		// 读取配置文件
 		PropertiesUtil util = new PropertiesUtil("/conf.properties");
 		config.put("sms_log_path", util.getProperty("sms_log_path"));// local file
-		//kafka spout
-		BrokerHosts brokerHosts = new ZkHosts(util.getProperty("zks"));
-		SpoutConfig spoutConf = new SpoutConfig(brokerHosts, KAFKA_TOPIC, util.getProperty("zkRoot"), KAFKA_ID);
+
+		//kafka broker
+		BrokerHosts brokerHosts = new ZkHosts(util.getProperty("kafka.zkHosts"), util.getProperty("kafka.brokers"));
+		// broker,topic,zk_root,kafka_id
+		SpoutConfig spoutConf = new SpoutConfig(brokerHosts,
+				util.getProperty("kafka.topic"),
+				util.getProperty("storm.zkRoot"),
+				util.getProperty("storm.topic.id"));
+		//设置如何处理kafka消息队列输入流
 		spoutConf.scheme = new SchemeAsMultiScheme(new StringScheme());
 		spoutConf.forceFromStart = false;
 		spoutConf.startOffsetTime = 0;
 		// storm zk conf
-		String zkServers = util.getProperty("zkServers");
-		spoutConf.zkServers = Arrays.asList(zkServers.split(","));
-		spoutConf.zkPort = Integer.valueOf(util.getProperty("zkPort"));
+		spoutConf.zkServers = Arrays.asList(util.getProperty("storm.zkServers").split(","));
+		spoutConf.zkPort = Integer.valueOf(util.getProperty("storm.zkPort"));
 		KafkaSpout spout = new KafkaSpout(spoutConf);
 		// 创建topology
 		TopologyBuilder builder = new TopologyBuilder();
 
-		builder.setSpout(KAFKA_SPOUT_ID, spout, 5);
-		//builder.setBolt("shortHallServiceWriteFileBolt",new WritreBlot(),1).shuffleGrouping("KAFKA_SPOUT_ID");
-		builder.setBolt("LogBlot", new LogBlot(), 1).shuffleGrouping("KAFKA_SPOUT_ID");
+		builder.setSpout(KAFKA_SPOUT_ID, spout, 3);
+		builder.setBolt("executeBlot", new ExecuteBlot(), 1).shuffleGrouping(KAFKA_SPOUT_ID);
+		//builder.setBolt("logBlot", new LogBlot(), 1).shuffleGrouping(KAFKA_SPOUT_ID);
 
 		if (args.length == 0) {
 			config.setNumWorkers(1);
 			LocalCluster cluster = new LocalCluster();
-
-			cluster.submitTopology(TOPOLOGY_NAME, config,
-					builder.createTopology());
+			cluster.submitTopology(TOPOLOGY_NAME, config, builder.createTopology());
 			waitForSeconds(1);
 		} else if (args.length == 3) {
 			try {
 				config.setNumWorkers(Integer.valueOf(args[0]));
 				config.setNumAckers(0);
-				StormSubmitter.submitTopology(TOPOLOGY_NAME, config,
-						builder.createTopology());
+				StormSubmitter.submitTopology(TOPOLOGY_NAME, config, builder.createTopology());
 			} catch (AlreadyAliveException e) {
 				e.printStackTrace();
 			} catch (InvalidTopologyException e) {
 				e.printStackTrace();
 			}
 		} else {
-			System.out.println("Usage:" + TOPOLOGY_NAME
-					+ " [workers] [spouts] [bolts]");
+			System.out.println("Usage:" + TOPOLOGY_NAME + " [workers] [spouts] [bolts]");
 		}
 	}
-
 
 	public static void waitForSeconds(int seconds) {
 		try {
@@ -76,5 +75,4 @@ public class LoadDataTopology {
 		} catch (InterruptedException e) {
 		}
 	}
-
 }

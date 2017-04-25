@@ -26,13 +26,11 @@ public class LogBlot extends BaseRichBolt {
 	@Override
 	public void execute(Tuple input) {
 		String line = input.getString(0);
-		//input.getStringByField("content");
 		LOG.info(line);
 		collector.ack(input);
 	}
 
 	@Override
 	public void declareOutputFields(OutputFieldsDeclarer declarer) {
-		//declarer.declare(new Fields(""));
 	}
 }

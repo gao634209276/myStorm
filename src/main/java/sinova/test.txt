@@ -1,0 +1,17 @@
+kafka-server-start.sh $KAFKA_HOME/config/server.properties &
+
+kafka-topics.sh --create --topic test \
+--zookeeper ark:2181/kafka \
+--partitions 3 \
+--replication 1
+
+kafka-topics.sh --list --zookeeper ark:2181/kafka
+
+kafka-topics.sh --describe \
+--topic test \
+--zookeeper ark:2181/kafka
+
+kafka-console-producer.sh --broker-list localhost:9092 --topic test
+
+
+kafka-console-consumer.sh --topic test --zookeeper ark:9092

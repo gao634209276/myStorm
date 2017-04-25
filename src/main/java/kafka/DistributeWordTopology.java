@@ -44,6 +44,7 @@ import backtype.storm.tuple.Values;
  * 然后由这两个Bolt分别根据实际需要（实时/离线）单独处理。
  * 打包后，在Storm集群上部署并运行这个Topology：
  * <p>
+ * http://shiyanjun.cn/archives/934.html
  * storm jar ~/storm-examples-0.0.1-SNAPSHOT.jar org.shirdrn.storm.examples.DistributeWordTopology h1
  */
 public class DistributeWordTopology {
