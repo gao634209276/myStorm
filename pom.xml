@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>myStrom</groupId>
-	<artifactId>study</artifactId>
+	<groupId>noah</groupId>
+	<artifactId>mob-detail-ftp</artifactId>
 	<version>1.0-SNAPSHOT</version>
 
 	<properties>
@@ -83,30 +83,6 @@
 					<encoding>UTF-8</encoding>
 				</configuration>
 			</plugin>
-			<!--mvn assembly:assembly-->
-			<!--<plugin>
-				<artifactId>maven-assembly-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>make-assembly</id>
-						<phase>package</phase>
-						<goals>
-							<goal>assembly</goal>
-						</goals>
-					</execution>
-				</executions>
-				<configuration>
-					<descriptorRefs>
-						<descriptorRef>jar-with-dependencies</descriptorRef>
-					</descriptorRefs>
-					<archive>
-						<manifest>
-							<mainClass>sinova.LoadDataTopology</mainClass>
-						</manifest>
-					</archive>
-					<outputDirectory>${project.build.directory}/assembly</outputDirectory>
-				</configuration>
-			</plugin>-->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-jar-plugin</artifactId>
@@ -128,11 +104,42 @@
 							<mainClass>sinova.LoadDataTopology</mainClass>
 						</manifest>
 						<manifestEntries>
+							<Class-Path>bin/</Class-Path>
 							<Class-Path>conf/</Class-Path>
 						</manifestEntries>
 					</archive>
+					<excludes>**/*.properties</excludes>
+					<!--<outputDirectory>${project.build.directory}/jar</outputDirectory>-->
 				</configuration>
 			</plugin>
+			<!--mvn assembly:assembly-->
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>make-assembly</id>
+						<phase>package</phase>
+						<goals>
+							<goal>assembly</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<!--<descriptorRefs>
+						<descriptorRef>jar-with-dependencies</descriptorRef>
+					</descriptorRefs>-->
+					<descriptors>
+						<descriptor>src/main/assembly/assembly.xml</descriptor>
+					</descriptors>
+					<archive>
+						<manifest>
+							<mainClass>sinova.LoadDataTopology</mainClass>
+						</manifest>
+					</archive>
+					<!--<outputDirectory>${project.build.directory}/jar</outputDirectory>-->
+				</configuration>
+			</plugin>
+
 			<!--<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-dependency-plugin</artifactId>

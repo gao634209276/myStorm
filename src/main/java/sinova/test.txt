@@ -12,6 +12,25 @@ kafka-topics.sh --describe \
 --zookeeper ark:2181/kafka
 
 kafka-console-producer.sh --broker-list localhost:9092 --topic test
-
-
 kafka-console-consumer.sh --topic test --zookeeper ark:9092
+
+
+ftp -n -i -v 10.142.164.74
+open 10.142.164.74
+user $USRNAME $PASSWD
+bin
+prom off
+cd $1
+lcd ${FILE_PATH}/$1
+mput *_${DATE}.txt*
+close
+bye
+EOF
+
+user ${username} ${pwd}
+binary
+lcd ${from_path}
+cd ${dest_path}
+mput *${time_arg}*
+bye
+

@@ -7,12 +7,14 @@ import backtype.storm.task.TopologyContext;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichBolt;
 import backtype.storm.tuple.Tuple;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.FileWriterWithEncoding;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPReply;
 import org.apache.log4j.Logger;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -27,27 +29,38 @@ public class ExecuteBlot extends BaseRichBolt {
 	private static final long serialVersionUID = 1L;
 	private static final Logger LOG = Logger.getLogger(ExecuteBlot.class);
 	private OutputCollector collector;
-	private String path = null;
+	private String local_path = null;
+	private String ftp_host = null;
+	private int ftp_port = 21;
+	private String ftp_user = null;
+	private String ftp_passwd = null;
+	private String file_name = null;
+	private String ftp_path = null;
 
 	@Override
 	public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
 		this.collector = collector;
-		path = stormConf.get("sms_log_path").toString();
+		file_name = stormConf.get("file.name").toString();
+		local_path = stormConf.get("local.path").toString();
+		ftp_port = Integer.parseInt(stormConf.get("ftp.port").toString());
+		ftp_passwd = stormConf.get("ftp.passwd").toString();
+		ftp_host = stormConf.get("ftp.host").toString();
+		ftp_user = stormConf.get("ftp.user").toString();
+		ftp_path = stormConf.get("ftp.path").toString();
 	}
+
 
 	@Override
 	public void execute(Tuple input) {
-		if (input.getSourceComponent()
-				.equals(Constants.SYSTEM_COMPONENT_ID) &&
-				input.getSourceStreamId().equals(Constants.SYSTEM_TICK_STREAM_ID)) {
-			LOG.info("rename File and FTP :");
+		if (input.getSourceComponent().equals(Constants.SYSTEM_COMPONENT_ID) && input.getSourceStreamId().equals(Constants.SYSTEM_TICK_STREAM_ID)) {
+			LOG.info("---------------RENAME File AND FTP-------------------");
 			renameFile();
+			ftpFile();
 		} else {
 			writeFile(input);
-			collector.ack(input);
 		}
+		collector.ack(input);
 	}
-
 
 	@Override
 	public void declareOutputFields(OutputFieldsDeclarer declarer) {
@@ -61,48 +74,92 @@ public class ExecuteBlot extends BaseRichBolt {
 	}
 
 	/**
-	 * mv /path/MOB-UPAY-MIN.tmp /path/MOB-UPAY-MIN
+	 * file.tmp-->file
 	 */
-	private void renameFile() {
-		File file = new File(path);
-		// 判断文件目录是否存在，且是文件目录，非文件
-		if (file.exists() && file.isDirectory()) {
-			File[] childFiles = file.listFiles();
-			String path = file.getAbsolutePath();
-			if (null != childFiles) {
-				for (File childFile : childFiles) {
-					// 如果是文件
-					if (childFile.isFile()) {
-						String oldName = childFile.getName();
-						// 判断后缀名是否是tmp
-						if (oldName.contains(".tmp")) {
-							String suffix = oldName.substring(oldName.indexOf("."));
-							if (suffix.equalsIgnoreCase(".tmp")) {
-								String newName = oldName.substring(0, oldName.indexOf("."));
-								boolean b = childFile.renameTo(new File(path + File.separator + newName));
-							}
-						}
+	public void renameFile() {
+		File dir = new File(local_path);
+		File[] fileLists = null;
+		if (dir.exists() && dir.isDirectory()) {
+			fileLists = dir.listFiles();
+		}
+		if (null != fileLists) {
+			for (File f : fileLists) {
+				String tmp;
+				if (f.isFile() && (tmp = f.getName()).endsWith(".tmp")) {
+					String newName = tmp.substring(0, tmp.indexOf(".tmp"));
+					File toFile = new File(local_path + File.separator + newName);
+					boolean b = f.renameTo(toFile);
+				}
+			}
+		}
+	}
+
+	/**
+	 * mv local_path/file --> /ftp_path/MOB-UPAY-MIN
+	 */
+	private void ftpFile() {
+		FTPClient ftpClient = new FTPClient();
+		InputStream fis = null;
+		try {
+			ftpClient.connect(ftp_host, ftp_port);
+			ftpClient.login(ftp_user, ftp_passwd);
+			if (!FTPReply.isPositiveCompletion(ftpClient.getReplyCode())) {
+				ftpClient.disconnect();
+				LOG.error("FTP CLIENT LOGIN FAIL !!! ");
+				return;
+			}
+			ftpClient.enterLocalPassiveMode();
+			ftpClient.setFileType(FTPClient.BINARY_FILE_TYPE);
+			ftpClient.setControlEncoding("UTF-8");
+			ftpClient.changeWorkingDirectory(ftp_path);
+
+			File dir = new File(local_path);
+			File[] fileLists = null;
+			if (dir.exists() && dir.isDirectory()) {
+				fileLists = dir.listFiles();
+			}
+			if (null != fileLists) {
+				for (File localFile : fileLists) {
+					if (localFile.isFile() && !localFile.getName().endsWith(".tmp")) {
+						fis = new FileInputStream(localFile);
+						ftpClient.storeFile(file_name, fis);
+						IOUtils.closeQuietly(fis);
+						boolean delete = localFile.delete();
+						LOG.info("DELETE FILE : " + localFile.getName() + (delete ? " SUCCESS " : " FAIL "));
 					}
 				}
+			}
+		} catch (IOException e) {
+			LOG.error("FTP FAIL : ", e);
+		} finally {
+			try {
+				if (!ftpClient.isConnected()) {
+					ftpClient.logout();
+				}
+				IOUtils.closeQuietly(fis);
+				ftpClient.disconnect();
+			} catch (IOException e1) {
+				LOG.error("FTP DESTROY FAIL : ", e1);
 			}
 		}
 	}
 
 	private void writeFile(Tuple tuple) {
 		String content = tuple.getString(0).replace("||", ",");
-		String filName = "MOB-UPAY-MIN.tmp";
-		File file = new File(path + filName);
+		String filName = file_name + ".tmp";
+		File file = new File(local_path + filName);
 		// 写文件
 		FileWriterWithEncoding writer = null;
 		try {
 			if (!file.exists()) {
-				boolean b = file.createNewFile();
+				boolean isSuccess = file.createNewFile();
+				LOG.info("CREATE NEW FILE : " + (isSuccess ? "SUCCESS" : "FAIL"));
 			}
 			writer = new FileWriterWithEncoding(file.getAbsoluteFile(), "utf-8", true);
 			writer.write(content);
 			writer.write("\r\n");// 写入换行
 		} catch (IOException e) {
-			e.printStackTrace();
+			LOG.error(" WRITE FILE FAIL !!!" + e);
 		} finally {
 			try {
 				if (writer != null) {
@@ -110,54 +167,9 @@ public class ExecuteBlot extends BaseRichBolt {
 					writer.close();
 				}
 			} catch (IOException e) {
-				e.printStackTrace();
+				LOG.error(" WRITE FILE DESTROY FAIL !!!" + e);
+				//e.printStackTrace();
 			}
 		}
-	}
-
-	/**
-	 * Description: 向FTP服务器上传文件
-	 *
-	 * @param url      FTP服务器hostname
-	 * @param port     FTP服务器端口
-	 * @param username FTP登录账号
-	 * @param password FTP登录密码
-	 * @param path     FTP服务器保存目录
-	 * @param filename 上传到FTP服务器上的文件名
-	 * @param input    输入流
-	 * @return 成功返回true，否则返回false
-	 * http://blog.csdn.net/hbcui1984/article/details/2720204
-	 */
-	public static boolean uploadFile(String url, int port, String username, String password, String path, String filename, InputStream input) {
-		boolean success = false;
-		FTPClient ftp = new FTPClient();
-		try {
-			int reply;
-			ftp.connect(url, port);//连接FTP服务器
-			//如果采用默认端口，可以使用ftp.connect(url)的方式直接连接FTP服务器
-			ftp.login(username, password);//登录
-			reply = ftp.getReplyCode();
-			if (!FTPReply.isPositiveCompletion(reply)) {
-				ftp.disconnect();
-				return success;
-			}
-			ftp.changeWorkingDirectory(path);
-			ftp.storeFile(filename, input);
-
-			input.close();
-			ftp.logout();
-			success = true;
-		} catch (IOException e) {
-			e.printStackTrace();
-		} finally {
-			if (ftp.isConnected()) {
-				try {
-					ftp.disconnect();
-				} catch (IOException ioe) {
-					//
-				}
-			}
-		}
-		return success;
 	}
 }

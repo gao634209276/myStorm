@@ -55,3 +55,19 @@ bin/kafka-topics.sh --describe \
 		Topic: thirdservice	Partition: 0	Leader: 3	Replicas: 3,2,11	Isr: 3,2,11
 		Topic: thirdservice	Partition: 1	Leader: 11	Replicas: 11,3,12	Isr: 3,12,11
 		Topic: thirdservice	Partition: 2	Leader: 12	Replicas: 12,11,1	Isr: 1,12,11
+
+
+项目位置:
+sinova@10.70.11.16:/app/sinova/topology/mob-detail-ftp-1.0-SNAPSHOT
+启动命令:
+	1,测试建议本地启动:
+	~/apache-storm-0.9.5/bin/storm jar mob-detail-ftp-1.0-SNAPSHOT.jar
+	启动后不要关闭终端
+	2,集群部署项目:
+	~/apache-storm-0.9.5/bin/storm jar mob-detail-ftp-1.0-SNAPSHOT.jar 1
+
+storm本地写的目录:
+	/app/sinova/var/ftp/mob_detail
+ftp远程目录:
+	10.142.164.74:/home/yhftp/yh_pay
+

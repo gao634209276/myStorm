@@ -25,7 +25,14 @@ public class LoadDataTopology {
 		Config config = new Config();
 		// 读取配置文件
 		PropertiesUtil util = new PropertiesUtil("/conf.properties");
-		config.put("sms_log_path", util.getProperty("sms_log_path"));// local file
+		config.put("file.name", util.getProperty("file.name"));
+		config.put("local.path", util.getProperty("local.path"));// local file
+		config.put("ftp.port", util.getProperty("ftp.port"));
+		config.put("ftp.passwd", util.getProperty("ftp.passwd"));
+		config.put("ftp.host", util.getProperty("ftp.host"));
+		config.put("ftp.user", util.getProperty("ftp.user"));
+		config.put("ftp.path", util.getProperty("ftp.path"));
+		config.put("ftp.port", util.getProperty("ftp.port"));
 
 		//kafka broker
 		BrokerHosts brokerHosts = new ZkHosts(util.getProperty("kafka.zkHosts"), util.getProperty("kafka.brokers"));
@@ -54,7 +61,7 @@ public class LoadDataTopology {
 			LocalCluster cluster = new LocalCluster();
 			cluster.submitTopology(TOPOLOGY_NAME, config, builder.createTopology());
 			waitForSeconds(1);
-		} else if (args.length == 3) {
+		} else if (args.length > 0) {
 			try {
 				config.setNumWorkers(Integer.valueOf(args[0]));
 				config.setNumAckers(0);
@@ -65,7 +72,7 @@ public class LoadDataTopology {
 				e.printStackTrace();
 			}
 		} else {
-			System.out.println("Usage:" + TOPOLOGY_NAME + " [workers] [spouts] [bolts]");
+			System.out.println("Usage:" + TOPOLOGY_NAME + " [workers]");
 		}
 	}
 
