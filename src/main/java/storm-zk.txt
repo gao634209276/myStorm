@@ -1,0 +1,119 @@
+1、本机(Twitter Storm)zookeeper中zookeeper中，storm目录结构
+zk: 127.0.0.1:2181(CONNECTED) 12] ls /storm
+[workerbeats, errors, supervisors, storms, assignments]
+[zk: 127.0.0.1:2181(CONNECTED) 13]
+2、在zookeeper中保存的数据目录结构
+
+一个要注意的地方是，作者在代码里面很多地方用到的storm-id, 其实就是topology-id的意思。
+我在邮件列表里面问了他一下， 他说以前他把topology叫做storm, 代码里面还没有改过来。
+
+
+/-{storm-zk-root}           -- storm在zookeeper上的根
+  |                            目录
+  |
+  |-/assignments            -- topology的任务分配信息
+  |   |
+  |   |-/{topology-id}      -- 这个下面保存的是每个
+  |                            topology的assignments
+  |                            信息包括： 对应的
+  |                            nimbus上的代码目录,所有
+  |                            task的启动时间,
+  |                            每个task与机器、端口的映射
+  |
+  |-/tasks                  -- 所有的task
+  |   |
+  |   |-/{topology-id}      -- 这个目录下面id为
+  |       |                    {topology-id}的topology
+  |       |                    所对应的所有的task-id
+  |       |
+  |       |-/{task-id}      -- 这个文件里面保存的是这个
+  |                            task对应的component-id：
+  |                            可能是spout-id或者bolt-id
+  |
+  |-/storms                 -- 这个目录保存所有正在运行
+  |   |                        的topology的id
+  |   |
+  |   |-/{topology-id}      -- 这个文件保存这个topology
+  |                            的一些信息，包括topology的
+  |                            名字，topology开始运行的时
+  |                            间以及这个topology的状态
+  |                            (具体看StormBase类)
+  |
+  |-/supervisors            -- 这个目录保存所有的supervisor
+  |   |                        的心跳信息
+  |   |
+  |   |-/{supervisor-id}    -- 这个文件保存的是supervisor
+  |                            的心跳信息包括:心跳时间，主
+  |                            机名，这个supervisor上worker
+  |                            的端口号运行时间
+  |                            (具体看SupervisorInfo类)
+  |
+  |-/taskbeats              -- 所有task的心跳
+  |   |
+  |   |-/{topology-id}      -- 这个目录保存这个topology的所
+  |       |                    有的task的心跳信息
+  |       |
+  |       |-/{task-id}      -- task的心跳信息，包括心跳的时
+  |                            间，task运行时间以及一些统计
+  |                            信息
+  |
+  |-/taskerrors             -- 所有task所产生的error信息
+      |
+      |-/{topology-id}      -- 这个目录保存这个topology下面
+          |                    每个task的出错信息
+          |
+          |-/{task-id}      -- 这个task的出错信息
+
+
+
+3、现版本中storm(apache storm)在zookeeper中的结构图（资料来源：http://segmentfault.com/a/1190000000653595）
+
+/-{storm-zk-root}           -- storm在zookeeper上的根目录(默认为/storm)
+  |
+  |-/assignments            -- topology的任务分配信息
+  |   |
+  |   |-/{topology-id}      --  这个目录保存的是每个topology的assignments信息包括：对应的nimbus上
+  |                         --  的代码目录,所有task的启动时间,每个task与机器、端口的映射。操作为
+  |                         --  (assignments)来获取所有assignments的值；以及(assignment-info storm-id)
+  |                         --  来得到给定的storm-id对应的AssignmentInfo信息
+  |                         --  在AssignmentInfo中存储的内容有:
+  |                         --  :executor->node+port :executor->start-time-secs :node->host
+  |                         --  具体定义在common.clj中的
+  |                         --  (defrecord Assignment[master-code-dir node->host executor->node+port                                    executor->start-time-secs])
+  |
+  |-/storms                 -- 这个目录保存所有正在运行的topology的id
+  |   |
+  |   |
+  |   |-/{topology-id}      -- 这个文件保存这个topology的一些信息，包括topology的名字，topology开始运行
+  |                         -- 的时间以及这个topology的状态。操作(active-storms),获得当前路径活跃的下
+  |                         -- topology数据。保存的内容参考类StormBase；(storm-base storm-id)得到给定的
+  |                         -- storm-id下的StormBase数据,具体定义在common.clj中的
+  |      -- (defrecord StormBase [storm-name launch-time-secs status num-workers component->executors])
+  |
+  |-/supervisors            -- 这个目录保存所有的supervisor的心跳信息
+  |   |
+  |   |
+  |   |-/{supervisor-id}    -- 这个文件保存supervisor的心跳信息包括:心跳时间，主机名，这个supervisor上
+  |                         -- worker的端口号，运行时间(具体看SupervisorInfo类)。操作(supervisors)得到
+  |                         -- 所有的supervisors节点；(supervisor-info supervisor-id)得到给定的
+  |                         -- supervisor-id对应的SupervisorInfo信息；具体定义在common.clj中的
+  |
+  |       -- (defrecord SupervisorInfo [time-secs hostname assignment-id used-ports meta scheduler-meta              uptime-secs])
+  |
+  |-/workerbeats                    -- 所有worker的心跳
+  |   |
+  |   |-/{topology-id}              -- 这个目录保存这个topology的所有的worker的心跳信息
+  |       |
+  |       |-/{supervisorId-port}    -- worker的心跳信息，包括心跳的时间，worker运行时间以及一些统计信息
+  |
+  |                                 -- 操作(heartbeat-storms)得到所有有心跳数据的topology，
+  |                                 -- (get-worker-heartbeat storm-id node port)得到具体一个topology下
+  |                                 -- 的某个worker(node:port)的心跳状况，
+  |                          -- (executor-beats storm-id executor->node+port)得到一个executor的心跳状况
+  |
+  |-/errors                  -- 所有产生的error信息
+  |
+  |-/{topology-id}           -- 这个目录保存这个topology下面的错误信息。操作(error-topologies)得到出错
+      |                      -- 的topology；(errors storm-id component-id)得到
+      |                      -- 给定的storm-id component-id下的出错信息
+      |-/{component-id}
